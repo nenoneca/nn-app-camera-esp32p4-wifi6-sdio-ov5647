@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# Board layer: ESP32-P4-WIFI6 (production v3.1 silicon) + OmniVision OV5647
+# (5 MP, Raspberry Pi Camera v1.3 class module).  Layered LAST so it overrides
+# nn-app-media's shared sdkconfig.defaults[.esp32p4], which selects the IMX708.
+# The v3.1 silicon needs none of the pre-3.0 arrangements the
+# ESP32-P4-Module-DEV-KIT board file carries.
+
+# ── Sensor: OV5647 instead of the shared default IMX708 ─────────────────────
+# CONFIG_CAMERA_IMX708 is not set
+CONFIG_CAMERA_OV5647=y
+CONFIG_CAMERA_OV5647_AUTO_DETECT_MIPI_INTERFACE_SENSOR=y
+# Native 1080p30 RAW10 — inside the P4 ISP's 1920-px line-buffer limit and the
+# encoder's 1920 max, so unlike the IMX708 there is NO sensor crop and NO PPA
+# scale: the pipeline is sensor -> ISP -> encoder at one geometry.
+CONFIG_CAMERA_OV5647_MIPI_RAW10_1920X1080_30FPS=y
+
+# ── nn_camera geometry: capture 1920x1080, ENCODE 1920x1072 ─────────────────
+# 1080 is not macroblock-aligned; the P4 encoder codes such heights
+# non-conformantly and software decoders reject the stream (validated on the
+# p4module variant).  PPA-crop 8 rows to 1072 = 16x67.
+CONFIG_NN_CAMERA_CAP_HRES=1920
+CONFIG_NN_CAMERA_CAP_VRES=1080
+CONFIG_NN_CAMERA_HRES=1920
+CONFIG_NN_CAMERA_VRES=1072
+
+# ── Colour: NEUTRAL until tuned on hardware ─────────────────────────────────
+# nn_camera's per-sensor CCM_BASE for the OV5647 is identity (no calibrated
+# matrix yet — see nn_camera.c), so start the WB gains at unity too and trim
+# live with `isp wb <r> <b>` once a real scene is available.  The IMX708
+# defaults (R/B=1620 milli) are for a different sensor's crosstalk and would
+# just tint this one.
+CONFIG_NN_CAMERA_WB_R_MILLI=1000
+CONFIG_NN_CAMERA_WB_B_MILLI=1000
+
+# ── Fixed-focus module: no VCM, no autofocus ────────────────────────────────
+# The RPi-v1.3-class OV5647 module has no focus motor.  With the motor
+# controller on, the DW9714 probe fails noisily at boot; worse, the sensor's
+# default IPA json carries an "af" section and esp_ipa_af_init ASSERTS on the
+# missing focus_info — an instant boot loop.  Both off: no probe, no AF module
+# linked, the json's af section has nothing to instantiate.
+# CONFIG_ESP_VIDEO_ENABLE_CAMERA_MOTOR_CONTROLLER is not set
+# CONFIG_CAM_MOTOR_DW9714 is not set
+# CONFIG_ESP_IPA_AF_ALGORITHM is not set
+# The sensor's default IPA json carries an "af" section, which (with the AF
+# module unlinked above) makes the IPA pipeline refuse to start: "failed to
+# detect IPA name=esp_ipa_af".  Select this board's json instead — the default
+# minus "af" (adn/aen/ian/acc kept).  Path is project-relative.
+CONFIG_CAMERA_OV5647_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE=y
+CONFIG_CAMERA_OV5647_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE_PATH="ov5647_fixed_focus.json"
